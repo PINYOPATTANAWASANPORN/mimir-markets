@@ -110,6 +110,65 @@ function parseDecision(value: unknown): "open" | "revise" | "skip" {
   return "revise";
 }
 
+function parseNumeric(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+/**
+ * Pure parser for a persona preflight response (§10.4).
+ * Returns null if the response is malformed or the score is not a finite number.
+ */
+export function parsePreflightOpinion(
+  slug: string,
+  displayName: string,
+  body: unknown,
+  priceUnits: bigint | string | null = null,
+): CouncilPreflightOpinion | null {
+  if (typeof body !== "object" || body === null) return null;
+  const raw = body as Record<string, unknown>;
+
+  const parsedScore = parseNumeric(raw.score);
+  if (parsedScore === null) return null;
+  const score = Math.max(0, Math.min(100, Math.round(parsedScore)));
+
+  let confidence: number;
+  if (raw.confidence === undefined) {
+    confidence = 50;
+  } else {
+    const parsedConf = parseNumeric(raw.confidence);
+    if (parsedConf === null) return null;
+    confidence = Math.max(0, Math.min(100, Math.round(parsedConf)));
+  }
+
+  const pricePaidUnits =
+    priceUnits != null
+      ? typeof priceUnits === "bigint"
+        ? priceUnits.toString()
+        : String(priceUnits)
+      : null;
+
+  return {
+    slug,
+    displayName,
+    decision: parseDecision(raw.decision),
+    score,
+    dimensionScores: parseDimensions(raw.dimensions),
+    suggestedMode: parseSuggestedMode(raw.suggestedMode),
+    confidence,
+    reasoning: String(raw.reasoning ?? "").slice(0, 400),
+    pricePaidUnits,
+  };
+}
+
 export async function gatherCouncilPreflight(args: {
   candidate: ClaimCandidateForPreflight;
   baseUrl: string;
@@ -139,17 +198,15 @@ export async function gatherCouncilPreflight(args: {
       const body = (await result.response.json()) as PreflightResponse;
       const priceUnits = result.payment?.priceUnits ?? null;
       if (priceUnits != null) totalPaidUnits += priceUnits;
-      opinions.push({
-        slug: persona.slug,
-        displayName: persona.displayName,
-        decision: parseDecision(body.decision),
-        score: Math.max(0, Math.min(100, Math.round(Number(body.score ?? 50)))),
-        dimensionScores: parseDimensions(body.dimensions),
-        suggestedMode: parseSuggestedMode(body.suggestedMode),
-        confidence: Math.max(0, Math.min(100, Math.round(Number(body.confidence ?? 50)))),
-        reasoning: String(body.reasoning ?? "").slice(0, 400),
-        pricePaidUnits: priceUnits != null ? priceUnits.toString() : null,
-      });
+      const opinion = parsePreflightOpinion(
+        persona.slug,
+        persona.displayName,
+        body,
+        priceUnits,
+      );
+      if (opinion) {
+        opinions.push(opinion);
+      }
     } catch {
       // Preflight is advisory. A persona that errors simply abstains.
     }
