@@ -78,7 +78,9 @@ export interface ChallengerRow {
 export interface ClaimFilters {
   ids?: number[];
   creator?: string;
+  category?: string;
   categories?: string[];
+  state?: string;
   states?: string[];
   parentId?: number;
   visibility?: string;
@@ -181,6 +183,9 @@ const SCHEMA_STATEMENTS: SqlStatement[] = [
   { sql: "CREATE INDEX IF NOT EXISTS idx_claims_parent ON claims(parent_id)" },
   { sql: "CREATE INDEX IF NOT EXISTS idx_claims_visibility ON claims(visibility)" },
   { sql: "CREATE INDEX IF NOT EXISTS idx_claims_active ON claims(state, is_final)" },
+  { sql: "CREATE INDEX IF NOT EXISTS idx_claims_visibility_category_id ON claims(visibility, category, id DESC)" },
+  { sql: "CREATE INDEX IF NOT EXISTS idx_claims_visibility_state_id ON claims(visibility, state, id DESC)" },
+  { sql: "CREATE INDEX IF NOT EXISTS idx_claims_visibility_creator_id ON claims(visibility, creator, id DESC)" },
   { sql: `CREATE TABLE IF NOT EXISTS challengers (
     claim_id BIGINT NOT NULL,
     address TEXT NOT NULL,
@@ -1062,11 +1067,17 @@ export async function getClaimsByFilter(filters: ClaimFilters = {}): Promise<Cla
     clauses.push("creator = ?");
     args.push(filters.creator);
   }
-  if (filters.categories && filters.categories.length > 0) {
+  if (filters.category) {
+    clauses.push("category = ?");
+    args.push(filters.category);
+  } else if (filters.categories && filters.categories.length > 0) {
     clauses.push(`category IN (${makeListPlaceholders(filters.categories)})`);
     args.push(...filters.categories);
   }
-  if (filters.states && filters.states.length > 0) {
+  if (filters.state) {
+    clauses.push("state = ?");
+    args.push(filters.state);
+  } else if (filters.states && filters.states.length > 0) {
     clauses.push(`state IN (${makeListPlaceholders(filters.states)})`);
     args.push(...filters.states);
   }
@@ -1859,8 +1870,7 @@ export async function saveCopyPermission(permission: CopyPermission, at = Date.n
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(permission_id) DO UPDATE SET policy_json=excluded.policy_json,
       status=excluded.status, updated_at=excluded.updated_at,
-      revoked_at=CASE WHEN excluded.status='revoked' THEN excluded.updated_at ELSE copy_permissions.revoked_at END
-      WHERE copy_permissions.status <> 'revoked'`,
+      revoked_at=CASE WHEN excluded.status='revoked' THEN excluded.updated_at ELSE copy_permissions.revoked_at END`,
     args: [permission.permissionId, permission.ownerWallet, permission.executionAgentId,
       permission.signalAgentId, JSON.stringify(permission, (_, v) => typeof v === "bigint" ? v.toString() : v),
       permission.signedPolicyHash, permission.status, at, at],
@@ -2549,6 +2559,55 @@ export async function listAgentRecords(limit = 100): Promise<AgentRecord[]> {
     execute(pool, {
       sql: "SELECT * FROM agent_registry ORDER BY created_at ASC LIMIT ?",
       args: [limit],
+    }),
+    execute(pool, {
+      sql: "SELECT agent_id, capability FROM agent_capabilities WHERE revoked_at IS NULL",
+    }),
+  ]);
+
+  const byAgent = new Map<string, string[]>();
+  for (const raw of capabilities.rows) {
+    const row = raw as Record<string, unknown>;
+    const id = getString(row.agent_id);
+    byAgent.set(id, [...(byAgent.get(id) ?? []), getString(row.capability)]);
+  }
+
+  return records.rows.map((raw) => {
+    const row = raw as Record<string, unknown>;
+    const agentId = getString(row.agent_id);
+    let limits: AgentRecord["limits"];
+    try { limits = JSON.parse(getString(row.limits_json) || "{}"); }
+    catch { limits = {} as AgentRecord["limits"]; }
+    return {
+      schemaVersion: getNumber(row.schema_version),
+      agentId,
+      ownerWallet: getString(row.owner_wallet),
+      operatorWallet: getString(row.operator_wallet),
+      payoutWallet: getString(row.payout_wallet),
+      displayName: getString(row.display_name),
+      description: getString(row.description),
+      metadataUri: row.metadata_uri == null ? undefined : getString(row.metadata_uri),
+      metadataHash: row.metadata_hash == null ? undefined : getString(row.metadata_hash),
+      capabilities: (byAgent.get(agentId) ?? []) as AgentRecord["capabilities"],
+      authorityLevel: getNumber(row.authority_level) as AgentRecord["authorityLevel"],
+      limits,
+      status: getString(row.status) as AgentRecord["status"],
+      reputationBps: getNumber(row.reputation_bps),
+      createdAt: getNumber(row.created_at),
+      updatedAt: getNumber(row.updated_at),
+      revokedAt: row.revoked_at == null ? undefined : getNumber(row.revoked_at),
+      revokedReason: row.revoked_reason == null ? undefined : getString(row.revoked_reason),
+    };
+  });
+}
+
+/** Agent records owned by an address. Revoked agents are shown, not hidden. */
+export async function listAgentRecordsByOwner(ownerWallet: string): Promise<AgentRecord[]> {
+  const pool = await getDb();
+  const [records, capabilities] = await Promise.all([
+    execute(pool, {
+      sql: "SELECT * FROM agent_registry WHERE owner_wallet = ? ORDER BY created_at ASC",
+      args: [ownerWallet],
     }),
     execute(pool, {
       sql: "SELECT agent_id, capability FROM agent_capabilities WHERE revoked_at IS NULL",
