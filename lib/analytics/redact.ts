@@ -329,3 +329,6 @@ export function redactWalletAddresses(properties: Record<string, unknown>): Reda
   walk(properties, sanitized, "");
   return { properties: sanitized, dropped };
 }
+
+export const MAX_EVENT_BODY_BYTES = MAX_EVENT_PAYLOAD_BYTES;
+export const trimEventProperties = trimProperties;

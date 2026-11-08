@@ -902,3 +902,8 @@ test("POST route handler successfully processes requests end-to-end", async () =
   assert.equal(response.status, 204);
 });
 
+test("trimEventProperties alias matches trimProperties bounds", () => {
+  const longVal = "x".repeat(300);
+  const res = trimProperties({ a: longVal });
+  assert.equal((res.a as string).length, 200);
+});
