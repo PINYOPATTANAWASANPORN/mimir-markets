@@ -15,7 +15,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { paidRoute } from "@/lib/x402/server";
 import { PRICES } from "@/lib/x402/config";
-import { parsePriceSymbol } from "@/lib/price/parse-price-symbol";
+import { MAX_PRICE_SYMBOL_LENGTH, parsePriceSymbol } from "@/lib/price/parse-price-symbol";
+
+export { MAX_PRICE_SYMBOL_LENGTH, parsePriceSymbol };
 
 const COINGECKO = "https://api.coingecko.com/api/v3";
 
