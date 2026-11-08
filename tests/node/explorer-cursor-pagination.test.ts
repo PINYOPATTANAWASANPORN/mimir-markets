@@ -591,3 +591,10 @@ test("VS API route: combines all parameters correctly", async () => {
 // Existing API validation tests (cursor, limit) - moved from top to here for grouping
 // ---------------------------------------------------------------------------
 
+test("GET /api/vs rejects non-integer cursor and out-of-range limit", async () => {
+  const { GET } = await import("../../app/api/vs/route");
+  const badCursor = await GET(new Request("http://localhost/api/vs?cursor=abc"));
+  assert.equal(badCursor.status, 400);
+  const badLimit = await GET(new Request("http://localhost/api/vs?limit=101"));
+  assert.equal(badLimit.status, 400);
+});

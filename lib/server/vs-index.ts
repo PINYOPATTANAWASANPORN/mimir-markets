@@ -843,6 +843,8 @@ export async function reconcileVsIndex(): Promise<ReconcileResult> {
 
 export type VsSort = "newest" | "expiring" | "updated";
 
+export type VsFeedSnapshotOptions = VsFeedOptions;
+
 export interface VsFeedOptions {
   forceRefresh?: boolean;
   cursor?: number;
