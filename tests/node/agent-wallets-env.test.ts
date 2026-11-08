@@ -286,3 +286,9 @@ test("getCouncilAddress ignores malformed or non-account addresses", () => {
   assert.equal(getCouncilAddress("secret-in-public-env", env), undefined);
 });
 
+test("secretEnvName and publicEnvName handle mixed-case idempotent suffixes", () => {
+  assert.equal(secretEnvName("oracle_secret"), "ORACLE_SECRET");
+  assert.equal(secretEnvName("market-creator_secret"), "MARKET_CREATOR_SECRET");
+  assert.equal(publicEnvName("oracle_public"), "ORACLE_PUBLIC");
+  assert.equal(publicEnvName("market-creator_public"), "MARKET_CREATOR_PUBLIC");
+});
