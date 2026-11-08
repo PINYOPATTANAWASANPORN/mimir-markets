@@ -215,3 +215,8 @@ Every storage key is represented by the `DataKey` enum (`contracts-soroban/mimir
        }
    }
    ```
+
+## Quick Reference: TTL Constants Summary
+
+- **Instance Storage**: Bound to contract instance TTL (`Init`, `Usdc`, `Oracle`, `FeeRecipient`, `PendingOracle`, `MarketCount`, `AccruedFees`).
+- **Persistent Storage**: Bumped via `extend_ttl(&key, 120_960, 518_400)` (~7-day threshold, ~30-day extension).
